@@ -12,8 +12,8 @@ evaded existing security controls before an alert fires.
 The difference between reactive and proactive SOC work:
 
 ```
-REACTIVE  — Wait for alert → Investigate → Respond
-PROACTIVE — Form hypothesis → Hunt → Find → Respond
+REACTIVE  Wait for alert → Investigate → Respond
+PROACTIVE Form hypothesis → Hunt → Find → Respond
 ```
 
 A threat hunter assumes the environment is already compromised
