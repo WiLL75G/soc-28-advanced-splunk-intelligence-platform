@@ -1,13 +1,13 @@
 # Threat Hunting Playbook
 ## Nexus Corp SOC Intelligence Platform
-## Analyst: James | @WilliamCyberSec | GitHub: WiLL75G
+## Analyst: William | @WilliamInCyber | GitHub: WiLL75G
 
 ---
 
 ## What is Threat Hunting?
 
 Threat hunting is the proactive search for threats that have
-evaded existing security controls — before an alert fires.
+evaded existing security controls before an alert fires.
 
 The difference between reactive and proactive SOC work:
 
@@ -17,7 +17,7 @@ PROACTIVE — Form hypothesis → Hunt → Find → Respond
 ```
 
 A threat hunter assumes the environment is already compromised
-and goes looking for evidence — rather than waiting to be told.
+and goes looking for evidence rather than waiting to be told.
 
 ---
 
@@ -109,7 +109,7 @@ After initial access, credential dumping is almost always
 the next step. Finding it early prevents lateral movement.
 
 **Data sources needed:**
-- Sysmon logs (Event ID 10 — process access)
+- Sysmon logs (Event ID 10 process access)
 - Windows Security logs (Event ID 4656)
 - EDR telemetry
 
@@ -147,7 +147,7 @@ CommandLine="*bcdedit*/set*recoveryenabled*no*")
 
 **What to look for:**
 - Deletion of volume shadow copies = ransomware pre-encryption step
-- Any result here is a CRITICAL alert — ransomware may be imminent
+- Any result here is a CRITICAL alert ransomware may be imminent
 
 ---
 
@@ -199,7 +199,7 @@ index=network sourcetype=proxy
 ```
 
 **What to look for:**
-- Same bytes_out size repeated = automated — not human
+- Same bytes_out size repeated = automated not human
 - High connection count to same domain = beaconing
 - Regular intervals = C2 heartbeat
 
@@ -208,7 +208,7 @@ index=network sourcetype=proxy
 ## Hunt 4 — Hunt for Insider Threat
 
 **Hypothesis:**
-A privileged user is abusing their access — downloading
+A privileged user is abusing their access downloading
 bulk data, accessing unusual resources, or exfiltrating data.
 
 **Why hunt this:**
@@ -260,7 +260,7 @@ index=auth sourcetype=WinEventLog:Security EventCode=4624
 
 ## Hunt Documentation Template
 
-Every hunt must be documented — even if nothing is found.
+Every hunt must be documented even if nothing is found.
 
 ```
 Hunt ID: HUNT-2026-[number]
