@@ -205,7 +205,7 @@ index=network sourcetype=proxy
 
 ---
 
-## Hunt 4 — Hunt for Insider Threat
+## Hunt 4 - Hunt for Insider Threat
 
 **Hypothesis:**
 A privileged user is abusing their access downloading
