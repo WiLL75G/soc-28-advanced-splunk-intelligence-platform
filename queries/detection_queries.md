@@ -1,6 +1,6 @@
 # Advanced Splunk Detection Queries
 ## Nexus Corp SOC Intelligence Platform
-## Analyst: James | @WilliamCyberSec | GitHub: WiLL75G
+## Analyst: William | @WilliamInCyber | GitHub: WiLL75G
 
 ---
 
@@ -32,7 +32,7 @@ index=auth sourcetype=linux_secure OR sourcetype=WinEventLog:Security
 ```
 
 **What it detects:** More than 10 failed login attempts from the same
-source IP within a 5-minute window — classic brute force pattern.
+source IP within a 5-minute window classic brute force pattern.
 
 **Tuning guidance:**
 - Increase threshold to 20 for noisy environments
@@ -40,7 +40,7 @@ source IP within a 5-minute window — classic brute force pattern.
 - Add geo lookup to flag non-domestic source IPs
 
 **SOC Analyst Note:** Always check if failed attempts were followed
-by a successful login — Event ID 4624 after 4625s = confirmed compromise.
+by a successful login Event ID 4624 after 4625s = confirmed compromise.
 
 ---
 
@@ -57,7 +57,7 @@ index=auth sourcetype=WinEventLog:Security EventCode=4625
 ```
 
 **What it detects:** One source IP attempting multiple different
-usernames — characteristic of password spray vs brute force.
+usernames characteristic of password spray vs brute force.
 
 **Key difference from brute force:**
 - Brute force: many attempts, one username
@@ -83,11 +83,11 @@ index=auth sourcetype=WinEventLog:Security EventCode=4624
 ```
 
 **What it detects:** The same user account logging in from
-multiple countries — indicates credential compromise or VPN use.
+multiple countries indicates credential compromise or VPN use.
 
 **SOC Analyst Note:** Always contact the user to verify before
 blocking. VPN usage can cause false positives. Check time
-between logins — logins 5,000 miles apart in 30 minutes = confirmed impossible.
+between logins -- logins 5,000 miles apart in 30 minutes = confirmed impossible.
 
 ---
 
@@ -129,7 +129,7 @@ OR NewProcessName="*msiexec.exe*")
 | sort - _time
 ```
 
-**What it detects:** Living off the Land Binaries (LOLBAS) — legitimate
+**What it detects:** Living off the Land Binaries (LOLBAS) legitimate
 Windows tools used maliciously to download or execute payloads.
 
 **SOC Analyst Note:** certutil.exe downloading files and
@@ -151,7 +151,7 @@ OR ObjectName="*\\CurrentVersion\\RunOnce*")
 | sort - _time
 ```
 
-**What it detects:** Changes to registry run keys — the most common
+**What it detects:** Changes to registry run keys the most common
 persistence mechanism used by malware.
 
 **SOC Analyst Note:** Any new entry pointing to temp directories,
@@ -172,12 +172,12 @@ index=windows sourcetype=WinEventLog:Security EventCode=4698
 ```
 
 **What it detects:** New scheduled tasks created outside of
-Microsoft system processes — attackers use scheduled tasks
+Microsoft system processes attackers use scheduled tasks
 for persistence and lateral movement.
 
 **SOC Analyst Note:** Tasks created by non-system users at
 unusual hours are high-fidelity indicators. Check the task
-action — PowerShell or cmd.exe in task actions = suspicious.
+action PowerShell or cmd.exe in task actions = suspicious.
 
 ---
 
@@ -197,7 +197,7 @@ EventCode=4624 Logon_Type=3 Authentication_Package=NTLM
 ```
 
 **What it detects:** Multiple NTLM network logons from the same
-source in a short time — characteristic of pass-the-hash attacks
+source in a short time characteristic of pass-the-hash attacks
 where stolen password hashes are used without knowing the plaintext.
 
 **SOC Analyst Note:** Legitimate NTLM network logons happen but
@@ -249,7 +249,7 @@ dest_ip!=172.16.0.0/12
 ```
 
 **What it detects:** Outbound data transfers exceeding 50MB to
-external IPs — a strong indicator of data exfiltration.
+external IPs a strong indicator of data exfiltration.
 
 **SOC Analyst Note:** Always check the destination IP on VirusTotal
 and AbuseIPDB. Legitimate large transfers (cloud backups) should
@@ -274,7 +274,7 @@ OR TargetImage="*explorer.exe*"
 ```
 
 **What it detects:** Processes attempting to access the memory
-of sensitive system processes — a technique used for credential
+of sensitive system processes a technique used for credential
 dumping and code injection.
 
 ---
@@ -298,7 +298,7 @@ index=network sourcetype=proxy OR sourcetype=firewall
 ```
 
 **What it detects:** Regular, repeated connections to the same
-external IP on the same port — the characteristic heartbeat
+external IP on the same port the characteristic heartbeat
 pattern of C2 malware beaconing home for instructions.
 
 **SOC Analyst Note:** Real C2 beacons are designed to look like
