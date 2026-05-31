@@ -44,7 +44,7 @@ Every query includes detection logic, tuning guidance, and analyst notes.
 
 #### Category 2 — Execution Detection
 - Query 4: PowerShell encoded command detection (T1059.001)
-- Query 5: LOLBAS execution detection — certutil, mshta, regsvr32 (T1218)
+- Query 5: LOLBAS execution detection certutil, mshta, regsvr32 (T1218)
 
 #### Category 3 — Persistence Detection
 - Query 6: Registry run key modification detection (T1547.001)
@@ -148,7 +148,7 @@ Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 
 ## Analyst Insight
 
-This platform represents the full arc of the 28-day challenge. Day 1 started with SSH brute force detection in Splunk. Day 28 ends with a production-ready detection and threat hunting platform that covers 14 MITRE ATT&CK techniques across 6 tactics. The difference between a SOC analyst and a detection engineer is this: analysts respond to what the platform tells them. Detection engineers build the platform that tells them. After 28 days of building, documenting, and hunting — you are no longer just an analyst. You are someone who can build the tools that other analysts depend on.
+This platform represents the full arc of the 28-day challenge. Day 1 started with SSH brute force detection in Splunk. Day 28 ends with a production-ready detection and threat hunting platform that covers 14 MITRE ATT&CK techniques across 6 tactics. The difference between a SOC analyst and a detection engineer is this: analysts respond to what the platform tells them. Detection engineers build the platform that tells them. After 28 days of building, documenting, and hunting you are no longer just an analyst. You are someone who can build the tools that other analysts depend on.
 
 ---
 
