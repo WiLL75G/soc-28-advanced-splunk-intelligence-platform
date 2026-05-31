@@ -4,11 +4,11 @@
 
 ## Incident Summary
 
-- **Project Type:** Advanced SIEM Intelligence Platform — Detection Engineering + Threat Hunting
-- **Severity:** Strategic — Production-Ready SOC Detection Capability
+- **Project Type:** Advanced SIEM Intelligence Platform Detection Engineering + Threat Hunting
+- **Severity:** Strategic Production-Ready SOC Detection Capability
 - **Scope:** 12 Detection Queries + 4 Threat Hunts + Full Hunting Playbook
 - **Tools Used:** Splunk SPL, Sysmon, Windows Event Logs, Network/Proxy Logs
-- **Status:** Complete — Advanced Detection Platform Delivered
+- **Status:** Complete Advanced Detection Platform Delivered
 
 ---
 
@@ -32,7 +32,7 @@ The Advanced Splunk Intelligence Platform is the capstone project of the 28-day 
 
 ---
 
-### 1. Detection Query Library — 12 Production SPL Queries
+### 1. Detection Query Library 12 Production SPL Queries
 
 Built and documented 12 advanced SPL detection queries across 6 attack categories.
 Every query includes detection logic, tuning guidance, and analyst notes.
@@ -64,8 +64,8 @@ Every query includes detection logic, tuning guidance, and analyst notes.
 #### SOC Observations:
 
 - Dynamic risk scoring in SPL lets analysts prioritise without manual review
-- Password spray and brute force require different detection logic — know the difference
-- C2 beacon detection uses behavioural analysis — not signatures — making it evasion-resistant
+- Password spray and brute force require different detection logic know the difference
+- C2 beacon detection uses behavioural analysis not signatures making it evasion-resistant
 
 ---
 
@@ -77,12 +77,12 @@ Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 #### Hunt 1 — Living Off the Land (LOLBAS)
 - Hypothesis: Attacker using legitimate Windows binaries to avoid AV/EDR detection
 - Key technique: certutil.exe downloading files, mshta.exe executing remote scripts
-- Expected result in clean environment: Zero results — any hit is high priority
+- Expected result in clean environment: Zero results any hit is high priority
 
 #### Hunt 2 — Credential Dumping
 - Hypothesis: Attacker accessing LSASS memory to harvest credentials
 - Key technique: Process access to lsass.exe, volume shadow copy deletion
-- Expected result: VSS deletion = ransomware imminent — CRITICAL response
+- Expected result: VSS deletion = ransomware imminent CRITICAL response
 
 #### Hunt 3 — C2 Communication
 - Hypothesis: Compromised endpoint beaconing to C2 over encrypted channels
@@ -96,8 +96,8 @@ Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 
 #### SOC Observations:
 
-- Threat hunting is proactive — it finds what alerts miss
-- Every hunt starts with a hypothesis — not a query
+- Threat hunting is proactive it finds what alerts miss
+- Every hunt starts with a hypothesis not a query
 - Documenting hunts that find nothing is as important as documenting confirmed threats
 - A threat hunting calendar turns ad-hoc hunting into a systematic programme
 
@@ -127,11 +127,11 @@ Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 ## SOC Analyst Findings
 
 - 12 production-ready SPL detection queries built and documented
-- Dynamic risk scoring implemented — analysts see priority without manual review
+- Dynamic risk scoring implemented analysts see priority without manual review
 - Password spray and brute force detected using different correlation logic
-- C2 beacon detection uses behavioural analysis — resistant to signature evasion
+- C2 beacon detection uses behavioural analysis resistant to signature evasion
 - 4 threat hunt scenarios documented with full SPL queries and analyst notes
-- Threat hunting calendar built — daily, weekly, and monthly hunt schedule
+- Threat hunting calendar built daily, weekly, and monthly hunt schedule
 
 ---
 
@@ -140,9 +140,9 @@ Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 - Built complete Splunk detection library covering 6 MITRE ATT&CK tactics
 - Implemented dynamic risk scoring across brute force and exfiltration queries
 - Produced 4 threat hunting playbooks with structured hypothesis-driven methodology
-- Built threat hunting calendar — converting ad-hoc hunting into systematic programme
-- Documented tuning guidance for every query — reducing false positive rates
-- Produced hunt documentation template — every hunt is evidence for compliance
+- Built threat hunting calendar converting ad-hoc hunting into systematic programme
+- Documented tuning guidance for every query reducing false positive rates
+- Produced hunt documentation template every hunt is evidence for compliance
 
 ---
 
@@ -155,11 +155,11 @@ This platform represents the full arc of the 28-day challenge. Day 1 started wit
 ## Learning Outcome
 
 - Write advanced SPL queries with dynamic risk scoring and statistical correlation
-- Detect credential attacks — brute force, password spray, impossible travel, pass-the-hash
-- Detect execution techniques — PowerShell encoding, LOLBAS abuse
-- Detect persistence — registry run keys, scheduled tasks
-- Detect lateral movement — pass-the-hash, SMB admin shares
-- Detect exfiltration — large outbound transfers, C2 beaconing
+- Detect credential attacks brute force, password spray, impossible travel, pass-the-hash
+- Detect execution techniques PowerShell encoding, LOLBAS abuse
+- Detect persistence registry run keys, scheduled tasks
+- Detect lateral movement pass-the-hash, SMB admin shares
+- Detect exfiltration large outbound transfers, C2 beaconing
 - Build and execute structured threat hunts using the hypothesis-driven methodology
 - Apply MITRE ATT&CK framework to detection engineering
 
@@ -179,7 +179,7 @@ soc-28-advanced-splunk-intelligence-platform/
 
 ---
 
-## The 28-Day SOC Portfolio — Complete
+## The 28-Day SOC Portfolio Complete
 
 This project is the final piece of a 28-day SOC analyst portfolio
 that covers every dimension of the role:
@@ -200,4 +200,4 @@ SOC readiness at the Tier 1 and Tier 2 level.
 
 ## Conclusion
 
-The Advanced Splunk Intelligence Platform delivers 12 production-ready detection queries and 4 threat hunting playbooks — the technical foundation of a mature SOC detection programme. Every query is mapped to MITRE ATT&CK, documented with tuning guidance, and built for real-world deployment. This final project demonstrates the complete SOC analyst skillset — from writing a basic SPL query on Day 1 to building a detection engineering platform on Day 28.
+The Advanced Splunk Intelligence Platform delivers 12 production-ready detection queries and 4 threat hunting playbooks the technical foundation of a mature SOC detection programme. Every query is mapped to MITRE ATT&CK, documented with tuning guidance, and built for real-world deployment. This final project demonstrates the complete SOC analyst skillset from writing a basic SPL query on Day 1 to building a detection engineering platform on Day 28.
