@@ -37,27 +37,27 @@ The Advanced Splunk Intelligence Platform is the capstone project of the 28-day 
 Built and documented 12 advanced SPL detection queries across 6 attack categories.
 Every query includes detection logic, tuning guidance, and analyst notes.
 
-#### Category 1 — Credential Attack Detection
+#### Category 1 →  Credential Attack Detection
 - Query 1: Brute force detection with dynamic risk scoring (T1110)
 - Query 2: Password spray detection via unique user correlation (T1110.003)
 - Query 3: Impossible travel detection via IP geolocation (T1078)
 
-#### Category 2 — Execution Detection
+#### Category 2 →  Execution Detection
 - Query 4: PowerShell encoded command detection (T1059.001)
 - Query 5: LOLBAS execution detection certutil, mshta, regsvr32 (T1218)
 
-#### Category 3 — Persistence Detection
+#### Category 3 →  Persistence Detection
 - Query 6: Registry run key modification detection (T1547.001)
 - Query 7: Scheduled task creation outside system processes (T1053.005)
 
-#### Category 4 — Lateral Movement Detection
+#### Category 4 →  Lateral Movement Detection
 - Query 8: Pass-the-hash detection via NTLM logon analysis (T1550.002)
 - Query 9: SMB admin share access detection (T1021.002)
 
-#### Category 5 — Exfiltration Detection
+#### Category 5 →  Exfiltration Detection
 - Query 10: Large outbound data transfer with risk scoring (T1041)
 
-#### Category 6 — Threat Hunting Queries
+#### Category 6 →  Threat Hunting Queries
 - Query 11: Process injection hunt targeting sensitive processes (T1055)
 - Query 12: C2 beacon pattern detection via connection regularity (T1071)
 
@@ -69,27 +69,27 @@ Every query includes detection logic, tuning guidance, and analyst notes.
 
 ---
 
-### 2. Threat Hunting Playbook — 4 Hunt Scenarios
+### 2. Threat Hunting Playbook  → 4 Hunt Scenarios
 
 Built a complete threat hunting playbook with 4 structured hunt scenarios.
 Each hunt has a hypothesis, reasoning, SPL queries, and documentation template.
 
-#### Hunt 1 — Living Off the Land (LOLBAS)
+#### Hunt 1 →  Living Off the Land (LOLBAS)
 - Hypothesis: Attacker using legitimate Windows binaries to avoid AV/EDR detection
 - Key technique: certutil.exe downloading files, mshta.exe executing remote scripts
 - Expected result in clean environment: Zero results any hit is high priority
 
-#### Hunt 2 — Credential Dumping
+#### Hunt 2  → Credential Dumping
 - Hypothesis: Attacker accessing LSASS memory to harvest credentials
 - Key technique: Process access to lsass.exe, volume shadow copy deletion
 - Expected result: VSS deletion = ransomware imminent CRITICAL response
 
-#### Hunt 3 — C2 Communication
+#### Hunt 3  → C2 Communication
 - Hypothesis: Compromised endpoint beaconing to C2 over encrypted channels
 - Key technique: DNS queries to new domains, regular beacon pattern analysis
 - Expected result: Regularity score > 5 = automated behaviour = C2 candidate
 
-#### Hunt 4 — Insider Threat
+#### Hunt 4  → Insider Threat
 - Hypothesis: Privileged user abusing access for bulk data download or exfiltration
 - Key technique: Bulk file download analysis, off-hours access pattern detection
 - Expected result: Off-hours logins + bulk downloads = high-priority investigation
@@ -185,12 +185,12 @@ This project is the final piece of a 28-day SOC analyst portfolio
 that covers every dimension of the role:
 
 ```
-Days 1–6    Foundation — Linux, Networking, SIEM basics
-Days 7–12   Detection — Malware analysis, Splunk, MITRE ATT&CK
-Days 13–18  Investigation — PowerShell, Wireshark, Vulnerability scanning
-Days 19–21  Career — Job search, Interview prep, EDR
-Days 22–25  Advanced — Zero Trust, DFIR, Threat Modeling
-Days 26–28  Leadership — Metrics, Compliance, Detection Engineering
+Days 1–6    Foundation  → Linux, Networking, SIEM basics
+Days 7–12   Detection  → Malware analysis, Splunk, MITRE ATT&CK
+Days 13–18  Investigation  → PowerShell, Wireshark, Vulnerability scanning
+Days 19–21  Career  → Job search, Interview prep, EDR
+Days 22–25  Advanced  → Zero Trust, DFIR, Threat Modeling
+Days 26–28  Leadership  → Metrics, Compliance, Detection Engineering
 ```
 
 28 projects. 28 GitHub repositories. One portfolio that proves
