@@ -1,4 +1,4 @@
-# Day 28 – SOC Tier 1 Incident Report: Advanced Splunk Intelligence Platform
+# SOC Tier 1 Incident Report: Advanced Splunk Intelligence Platform
 
 ---
 
