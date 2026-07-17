@@ -1,326 +1,298 @@
-# Advanced Splunk Detection Queries
+# Threat Hunting Playbook
 
 Nexus Corp SOC
 Analyst: William | @WilliamInCyber | GitHub: WiLL75G
 
 ---
 
-## Overview
+## What Hunting Is
 
-SPL detection queries mapped to MITRE ATT&CK. Each includes detection logic, tuning guidance, and analyst notes.
+Hunting is looking for what the alerts missed.
 
-Validation status is stated per query. Some are validated against telemetry from my own labs. Most are written from technique knowledge and have never fired against the technique they detect, which is a different thing and worth saying.
+```
+REACTIVE   Alert fires  →  Investigate  →  Respond
+PROACTIVE  Hypothesis   →  Hunt         →  Find or rule out
+```
+
+The premise is uncomfortable and deliberate: assume the environment is already compromised and go looking for the evidence. A hunter does not wait to be told.
+
+The rules you have answer questions you already thought to ask. Hunting asks the ones you did not.
 
 ---
 
-## Credential Access
+## The Process
 
-### Query 1, Brute Force. T1110.
+```
+1  HYPOTHESIS
+   A claim about what an attacker would be doing right now
+   if they were here. Built from threat intel, TTPs, or an
+   anomaly you noticed.
 
-**Validated** against real SSH brute force in my Splunk lab.
+2  DATA
+   Which sources would hold the evidence.
+   SIEM, EDR, network, proxy, DNS.
+
+3  INVESTIGATE
+   Write the SPL. Iterate. The first query is never right.
+
+4  PATTERN
+   Look for shape, not events. One failed login is noise.
+   Forty seven is signal.
+
+5  RESOLVE
+   Confirmed: escalate and contain.
+   Ruled out: document, and write the rule so next time
+   it is an alert instead of a hunt.
+```
+
+Step 1 is the whole discipline. A query without a hypothesis is not a hunt, it is browsing.
+
+---
+
+## Hunt 1, Living Off the Land
+
+**Hypothesis:** An attacker has access and is using signed Windows binaries to avoid EDR.
+
+**Why:** certutil, mshta, and regsvr32 are legitimate Microsoft tools. AV does not flag them because there is nothing to flag. The binary is not the signal, the command line is.
+
+**Data:** Windows 4688, Sysmon Event 1.
+
+**Hunt 1a, certutil downloading**
 
 ```spl
-index=auth sourcetype=linux_secure OR sourcetype=WinEventLog:Security
-(EventCode=4625 OR "Failed password")
-| bucket _time span=5m
-| stats count as failed_attempts by _time, src_ip, user
-| where failed_attempts > 10
-| eval risk_score = case(
-    failed_attempts > 50, "CRITICAL",
-    failed_attempts > 25, "HIGH",
-    true(), "MEDIUM"
+index=windows (EventCode=4688 OR source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational")
+NewProcessName="*certutil.exe*"
+(CommandLine="*-urlcache*" OR CommandLine="*-decode*"
+OR CommandLine="*-encode*" OR CommandLine="*http*")
+| table _time, ComputerName, user, CommandLine
+| sort - _time
+```
+
+Looking for:
+
+`-urlcache -split -f` — downloading a file.
+
+`-decode` — decoding a base64 payload.
+
+Any certutil execution by a non IT user.
+
+**Hunt 1b, mshta executing remote script**
+
+```spl
+index=windows EventCode=4688
+NewProcessName="*mshta.exe*"
+(CommandLine="*http*" OR CommandLine="*vbscript*"
+OR CommandLine="*javascript*")
+| table _time, ComputerName, user, CommandLine
+| sort - _time
+```
+
+Looking for: mshta reaching a URL. That is remote HTA execution, and it is a delivery technique with no legitimate use case in most environments.
+
+**Expected in a clean environment: zero.**
+
+That is what makes this a good hunt. A clear success condition and a cheap run. Any hit is high priority by definition, because the baseline is nothing.
+
+---
+
+## Hunt 2, Credential Dumping
+
+**Hypothesis:** An attacker with a foothold is reading credentials from memory to move laterally.
+
+**Why:** Credential access is the pivot. Before it, the attacker owns one machine. After it, they own credentials, and credentials work everywhere the credentials work. Catching this stage is the difference between an incident and a breach.
+
+**Data:** Sysmon Event 10, Windows 4656, EDR.
+
+**Hunt 2a, LSASS memory access**
+
+```spl
+index=windows source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational"
+EventCode=10 TargetImage="*lsass.exe*"
+| where NOT (
+    SourceImage="*MsMpEng.exe*" OR
+    SourceImage="*csrss.exe*" OR
+    SourceImage="*wininit.exe*" OR
+    SourceImage="*services.exe*"
   )
-| sort - failed_attempts
-| table _time, src_ip, user, failed_attempts, risk_score
-```
-
-Detects more than 10 failed logins from one source inside a 5 minute window.
-
-**Tuning:**
-Raise to 20 in noisy environments.
-Whitelist known vulnerability scanners.
-Add a geo lookup to flag non domestic sources.
-
-**Note:** The failures are not the finding. Check for a 4624 from the same source after the 4625s. Forty seven failures is an attack that failed. Forty seven failures and one success is an attacker with a shell.
-
-**Build quirk:** On my lab, linux_secure ingests fragmented. The sourcetype is pinned and every linux_secure search needs a rex extraction on top. That is environment specific, not a query flaw.
-
----
-
-### Query 2, Password Spray. T1110.003.
-
-**Validated** against the 4625 cross account correlation from my Windows spray lab.
-
-```spl
-index=auth sourcetype=WinEventLog:Security EventCode=4625
-| bucket _time span=30m
-| stats dc(user) as unique_users, count as attempts by _time, src_ip
-| where unique_users > 5 AND attempts > 10
-| eval attack_type = "Password Spray"
-| eval risk = "HIGH"
-| table _time, src_ip, unique_users, attempts, attack_type, risk
-```
-
-Detects one source touching many usernames.
-
-**The distinction:**
-Brute force is many attempts against one account. Count within.
-Spray is few attempts against many accounts. Count across.
-
-Same event ID. Opposite correlation. `dc(user)` is the entire rule a per account threshold cannot see this, which is exactly why attackers use it.
-
-**Note:** Spray stays under lockout on purpose. The low attempt count per user is the design, not an accident, and it is why the unique_users correlation is the only thing that catches it.
-
----
-
-### Query 3, Impossible Travel. T1078.
-
-**Not validated.**
-
-```spl
-index=auth sourcetype=WinEventLog:Security EventCode=4624
-| iplocation src_ip
-| stats list(Country) as countries, list(_time) as times,
-  list(src_ip) as ips by user
-| eval country_count = mvcount(countries)
-| where country_count > 1
-| eval risk = "HIGH - Impossible Travel"
-| table user, countries, times, ips, risk
-```
-
-Detects one account authenticating from multiple countries.
-
-**Note:** This is the noisiest rule in most SIEMs. VPN, mobile CGNAT, cloud sync clients, and badly geolocated IP blocks all fire it on innocent users. The query is easy. The exclusion list is the work.
-
-Contact the user out of band before containment — if the account is compromised, the attacker reads the email. And check the interval: 5,000 miles in 30 minutes is physics. 5,000 miles in 14 hours is a flight.
-
----
-
-## Execution
-
-### Query 4, PowerShell Encoded Command. T1059.001.
-
-**Validated** against Sysmon EID 1 and 4104 from my Windows endpoint forensics lab, including base64 deobfuscation.
-
-```spl
-index=windows sourcetype=WinEventLog:Security EventCode=4688
-(CommandLine="*-EncodedCommand*" OR CommandLine="*-enc *"
-OR CommandLine="*-e *" OR CommandLine="*-ec *")
-| rex field=CommandLine "(?i)-(?:EncodedCommand|enc|e|ec)\s+(?P<encoded_cmd>\S+)"
-| table _time, ComputerName, user, ParentProcessName,
-  CommandLine, encoded_cmd
+| table _time, ComputerName, SourceImage, TargetImage,
+  GrantedAccess, CallTrace
 | sort - _time
 ```
 
-Detects PowerShell run with a base64 payload.
+Looking for:
 
-**Note:** `-EncodedCommand` takes base64, not URL encoding, so Splunk cannot decode it natively without an app. The query extracts the string. Decode it in CyberChef, or pull the decoded version from Event 4104 script block logging, which logs it in the clear.
+Any unexpected process touching LSASS. Nothing legitimate reads it.
 
-**Read ParentProcessName first.** `-EncodedCommand` alone is not conclusive — plenty of legitimate tooling uses it. WINWORD.EXE or EXCEL.EXE as the parent is what makes it malicious before anything is decoded.
+GrantedAccess `0x1010` or `0x1410` — the credential dumping access masks.
 
-The `-e` pattern will match broadly. Expect false positives and tune it.
+SourceImage running from a temp directory. That settles it.
 
----
-
-### Query 5, LOLBAS Execution. T1218.
-
-**Not validated.** No lab in my portfolio has generated certutil or mshta abuse.
+**Hunt 2b, shadow copy deletion**
 
 ```spl
-index=windows sourcetype=WinEventLog:Security EventCode=4688
-(NewProcessName="*certutil.exe*" OR NewProcessName="*mshta.exe*"
-OR NewProcessName="*regsvr32.exe*" OR NewProcessName="*wscript.exe*"
-OR NewProcessName="*cscript.exe*" OR NewProcessName="*rundll32.exe*"
-OR NewProcessName="*msiexec.exe*")
-| where NOT (ParentProcessName="*msiexec*" AND NewProcessName="*msiexec*")
-| stats count by _time, ComputerName, user,
-  ParentProcessName, NewProcessName, CommandLine
-| sort - _time
-```
-
-Detects signed Windows binaries used to download or execute payloads.
-
-**Note:** These are Microsoft signed tools doing what they were built to do, which is why AV does not flag them and why the binary name is not the signal. The command line is. certutil with `-urlcache` is downloading. regsvr32 with a URL is executing remote script.
-
-rundll32 and msiexec are noisy in any real environment. This query as written needs a baseline before deployment.
-
----
-
-## Persistence
-
-### Query 6, Scheduled Task Creation. T1053.005.
-
-**Not validated.**
-
-```spl
-index=windows sourcetype=WinEventLog:Security EventCode=4698
-| rex field=_raw "Task Name:\s+(?P<task_name>[^\n]+)"
-| rex field=_raw "Task Content:\s+(?P<task_content>[^\n]+)"
-| where NOT (user="SYSTEM" AND like(task_name, "%Microsoft%"))
-| table _time, ComputerName, user, task_name, task_content
-| sort - _time
-```
-
-Detects tasks created outside system processes.
-
-**Note:** Scheduled tasks are legitimate constantly, so the exclusion is the rule. PowerShell or cmd.exe in the task action is what raises it. Task names impersonating Microsoft paths are evasion aimed at a human scanning a list, not at a rule.
-
-The original used a wildcard inside `NOT (...)` which does not glob. Uses `like()` now.
-
----
-
-## Lateral Movement
-
-### Query 7, Pass the Hash. T1550.002.
-
-**Not validated.**
-
-```spl
-index=windows sourcetype=WinEventLog:Security
-EventCode=4624 Logon_Type=3 Authentication_Package=NTLM
-| where user != "ANONYMOUS LOGON"
-| bucket _time span=10m
-| stats count by _time, src_ip, dest, user, Logon_Type
-| where count > 3
-| eval risk = "HIGH - Possible Pass-the-Hash"
-| table _time, src_ip, dest, user, count, risk
-| sort - count
-```
-
-Detects bursts of NTLM network logons from one source.
-
-**Note:** NTLM is legitimate. Bursts of it are not, especially where Kerberos would be expected. This rule needs to know what normal NTLM looks like in the environment, which is a baseline I do not have. Deploying it without one produces noise.
-
-Added a bucket — the original grouped by exact `_time`, so `count > 3` could never fire.
-
----
-
-### Query 8, SMB Admin Share Access. T1021.002.
-
-**Not validated.**
-
-```spl
-index=windows sourcetype=WinEventLog:Security EventCode=5140
-(ShareName="*ADMIN$*" OR ShareName="*C$*" OR ShareName="*IPC$*")
-| bucket _time span=10m
-| stats count by _time, src_ip, dest, user, ShareName
-| where count > 2
-| eval risk = case(
-    like(ShareName, "%ADMIN$%"), "CRITICAL - Admin Share Access",
-    like(ShareName, "%C$%"), "HIGH - C Drive Share Access",
-    true(), "MEDIUM"
-  )
-| table _time, src_ip, dest, user, ShareName, count, risk
-```
-
-Detects access to administrative shares used for remote tool staging and execution.
-
-**Note:** The original case statement used wildcards, which `case()` does not glob everything fell through to MEDIUM. Uses `like()` now.
-
-Workstation to server SMB outside a mapped drive is the shape worth alerting on.
-
----
-
-## Exfiltration
-
-### Query 9, Large Outbound Transfer. T1041.
-
-**Validated** against the exfiltration pattern in my AI era detection lab.
-
-```spl
-index=network sourcetype=firewall OR sourcetype=proxy
-dest_ip!=10.0.0.0/8 dest_ip!=192.168.0.0/16
-dest_ip!=172.16.0.0/12
-| stats sum(bytes_out) as total_bytes by src_ip, dest_ip, dest_port
-| where total_bytes > 52428800
-| eval total_mb = round(total_bytes/1024/1024, 2)
-| eval risk = case(
-    total_mb > 500, "CRITICAL",
-    total_mb > 100, "HIGH",
-    true(), "MEDIUM"
-  )
-| sort - total_bytes
-| table src_ip, dest_ip, dest_port, total_mb, risk
-```
-
-Detects outbound transfers over 50MB to external destinations.
-
-**Note:** Enrich the destination on VirusTotal and AbuseIPDB before acting. Whitelist cloud backup.
-
-The structural weakness of any volume rule: it fires after the data has left. It is coverage at the end of the kill chain, which means the alert arrives when the loss is complete. Detection earlier in the chain is cheaper by orders of magnitude.
-
----
-
-## Hunting Queries
-
-### Query 10, Process Injection. T1055.
-
-**Not validated.**
-
-```spl
-index=windows sourcetype=sysmon EventCode=10
-(TargetImage="*lsass.exe*" OR TargetImage="*svchost.exe*"
-OR TargetImage="*explorer.exe*")
-| where NOT (SourceImage="*MsMpEng.exe*"
-  OR SourceImage="*csrss.exe*"
-  OR SourceImage="*services.exe*")
-| table _time, ComputerName, SourceImage,
-  TargetImage, GrantedAccess, CallTrace
-| sort - _time
-```
-
-Detects processes reading the memory of sensitive system processes.
-
-**Note:** lsass.exe as the target is the one that matters. Nothing legitimate reads LSASS. GrantedAccess masks of 0x1010 and 0x1410 are the credential dumping access patterns.
-
-svchost and explorer generate volume. Start with lsass only.
-
----
-
-### Query 11, C2 Beacon via Regularity. T1071.
-
-**Not validated.**
-
-```spl
-index=network sourcetype=proxy OR sourcetype=firewall
-| bucket _time span=1h
-| stats count as connections,
-  dc(dest_port) as unique_ports,
-  sum(bytes_out) as total_bytes
-  by src_ip, dest_ip, _time
-| where connections > 20 AND unique_ports < 3
-| eval beacon_score = round((connections / unique_ports), 2)
-| where beacon_score > 10
-| eval risk = "HIGH - Possible C2 Beacon"
-| sort - beacon_score
-| table src_ip, dest_ip, connections,
-  unique_ports, beacon_score, risk
-```
-
-Detects repeated connections to one destination on few ports.
-
-**Note:** Behavioural, not signature based, which makes it resistant to the evasion that defeats IOC matching. Humans do not generate traffic at fixed intervals. A clean rhythm means a scheduler, and a scheduler talking outbound is a beacon until proven otherwise.
-
-Real C2 jitters the interval to defeat exactly this. A sophisticated beacon will not have a clean regularity score.
-
----
-
-### Query 12, Shadow Copy Deletion. T1490.
-
-**Not validated.**
-
-```spl
-index=windows sourcetype=WinEventLog:Security EventCode=4688
+index=windows EventCode=4688
 (CommandLine="*vssadmin*delete*shadows*" OR
 CommandLine="*wmic*shadowcopy*delete*" OR
 CommandLine="*bcdedit*recoveryenabled*no*")
 | table _time, ComputerName, user, CommandLine
-| eval risk = "CRITICAL - Ransomware Pre-Encryption"
 | sort - _time
 ```
 
-Detects deletion of volume shadow copies.
+Looking for: any result at all.
 
-**Note:** This is not an indicator, it is a countdown. Nothing legitimate deletes shadow copies. Ransomware does it immediately before encryption, to remove the recovery path first.
+**This one is not a finding, it is an emergency.** Shadow copy deletion is the step immediately before encryption. It removes the recovery path first, which means the ransomware is already staged and the window is minutes.
 
-Any hit is a containment action, not a triage queue item.
+A hit here does not go in a queue. It goes to containment.
+
+---
+
+## Hunt 3, C2 Communication
+
+**Hypothesis:** A compromised endpoint is beaconing on a schedule over a channel that looks normal.
+
+**Why:** C2 blends with HTTPS by design. Signature detection fails because there is no signature. It is legitimate protocol carrying illegitimate intent. Behaviour is the only angle left.
+
+**Data:** Proxy, firewall, NetFlow, DNS.
+
+**Hunt 3a, queries to rarely seen domains**
+
+```spl
+index=network sourcetype=dns
+| stats count as query_count, dc(src_ip) as unique_hosts by query
+| where query_count < 3 AND unique_hosts < 2
+| table query, query_count, unique_hosts
+| sort query_count
+```
+
+Looking for:
+
+Domains almost nobody queried. A real site has traffic. A C2 domain has one victim.
+
+Random looking names. DGA output.
+
+**Note:** The domain age angle needs a lookup table populated from a domain registration feed. That does not exist by default in Splunk and has to be built. This query works on rarity instead, which is available without any lookup and approximates the same signal.
+
+**Hunt 3b, beaconing pattern**
+
+```spl
+index=network sourcetype=proxy
+| bucket _time span=1h
+| stats count as hourly_connections,
+  dc(bytes_out) as unique_sizes
+  by src_ip, dest_domain, _time
+| where hourly_connections > 10 AND unique_sizes < 3
+| eval regularity_score = round(hourly_connections / unique_sizes, 1)
+| where regularity_score > 5
+| eval risk = "C2 Beacon Pattern Detected"
+| sort - regularity_score
+```
+
+Looking for:
+
+Repeated identical payload sizes. A machine, not a person.
+
+High connection count to one domain.
+
+Regular intervals. A heartbeat.
+
+**Limit worth naming:** mature C2 jitters both the interval and the payload size specifically to defeat this. A sophisticated beacon will not score. This catches commodity tooling, which is most of it, and misses the operator who read the same blog posts.
+
+---
+
+## Hunt 4, Insider Threat
+
+**Hypothesis:** A privileged user is bulk collecting data.
+
+**Why this is the hardest hunt:** Every action is authorised. Nothing fires. There is no rule for a person doing their job for the wrong reason, and that is precisely why it has to be a hunt rather than an alert. The signal is not the action, it is the deviation from that person's own pattern.
+
+**Data:** DLP, file access, proxy, email gateway.
+
+**Hunt 4a, bulk download volume**
+
+```spl
+index=proxy OR index=fileshare
+| bucket _time span=1d
+| stats sum(bytes) as total_bytes,
+  count as file_count,
+  dc(resource) as unique_resources
+  by user, _time
+| where total_bytes > 104857600
+| eval total_mb = round(total_bytes/1024/1024, 2)
+| eval risk = case(
+    total_mb > 1000, "CRITICAL - Possible Exfiltration",
+    total_mb > 500,  "HIGH - Unusual Download Volume",
+    true(),          "MEDIUM - Elevated Download Volume"
+  )
+| table _time, user, total_mb, file_count, unique_resources, risk
+| sort - total_mb
+```
+
+**Hunt 4b, off hours access**
+
+```spl
+index=auth sourcetype=WinEventLog:Security EventCode=4624
+| eval hour = strftime(_time, "%H")
+| where hour < 6 OR hour > 22
+| stats count as off_hours_logins by user, src_ip, dest
+| where off_hours_logins > 3
+| eval risk = "MEDIUM - Off Hours Access Pattern"
+| table user, src_ip, dest, off_hours_logins, risk
+```
+
+Looking for:
+
+Non IT users authenticating between midnight and 06:00.
+
+Bulk downloads in the weeks around a resignation or termination.
+
+Access to resources that user has never touched.
+
+**Note:** Volume alone is not a finding. A finance analyst pulling 500MB at quarter end is doing their job. The threshold that works is per user, against that user's own baseline, and this query does not have one. Absolute thresholds on insider hunting produce accusations, not findings.
+
+---
+
+## Documentation Template
+
+Every hunt is documented. Including the ones that find nothing.
+
+```
+Hunt ID:        HUNT-2026-[number]
+Date:           [date]
+Analyst:        William
+Hypothesis:     [what you claimed an attacker would be doing]
+Data Sources:   [which logs]
+Queries Used:   [reference IDs]
+Period:         [from] to [to]
+Findings:       [what you found, or confirmed clean]
+Actions:        [escalated / rule created / ruled out]
+Outcome:        [threat confirmed / ruled out / new rule]
+```
+
+**The zero result hunts are the ones that matter most here.**
+
+A hunt returning nothing is a negative finding with a timestamp. It is what lets someone say the environment was clean against this technique, on this date, across this period. Undocumented, it proves nothing, and a hunt nobody wrote down did not happen.
+
+It is also the only way to build coverage you can state rather than assume.
+
+---
+
+## Hunting Calendar
+
+```
+DAILY, 15 minutes
+  New external IPs in proxy logs
+  Admin share access events
+  Scheduled task creation outside system processes
+
+WEEKLY, 1 hour
+  LOLBAS execution
+  Beaconing patterns in network logs
+  Off hours authentication
+
+MONTHLY, 4 hours
+  Full credential dumping hunt
+  Insider threat behavioural analysis
+  Implement detection for one new ATT&CK technique
+```
+
+The calendar is what turns hunting from something someone does when the queue is quiet into a programme with coverage you can point at. Ad hoc hunting is not a capability, it is a hobby with good intentions.
