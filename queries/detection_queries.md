@@ -1,20 +1,23 @@
 # Advanced Splunk Detection Queries
-## Nexus Corp SOC Intelligence Platform
-## Analyst: William | @WilliamInCyber | GitHub: WiLL75G
+
+Nexus Corp SOC
+Analyst: William | @WilliamInCyber | GitHub: WiLL75G
 
 ---
 
 ## Overview
 
-This document contains production-ready SPL (Splunk Processing Language)
-queries for detecting real attack techniques mapped to MITRE ATT&CK.
-Each query includes detection logic, tuning guidance, and SOC analyst notes.
+SPL detection queries mapped to MITRE ATT&CK. Each includes detection logic, tuning guidance, and analyst notes.
+
+Validation status is stated per query. Some are validated against telemetry from my own labs. Most are written from technique knowledge and have never fired against the technique they detect, which is a different thing and worth saying.
 
 ---
 
-## Category 1 — Credential Attack Detection
+## Credential Access
 
-### Query 1: Brute Force Detection (T1110)
+### Query 1, Brute Force. T1110.
+
+**Validated** against real SSH brute force in my Splunk lab.
 
 ```spl
 index=auth sourcetype=linux_secure OR sourcetype=WinEventLog:Security
@@ -25,26 +28,28 @@ index=auth sourcetype=linux_secure OR sourcetype=WinEventLog:Security
 | eval risk_score = case(
     failed_attempts > 50, "CRITICAL",
     failed_attempts > 25, "HIGH",
-    failed_attempts > 10, "MEDIUM"
+    true(), "MEDIUM"
   )
 | sort - failed_attempts
 | table _time, src_ip, user, failed_attempts, risk_score
 ```
 
-**What it detects:** More than 10 failed login attempts from the same
-source IP within a 5-minute window classic brute force pattern.
+Detects more than 10 failed logins from one source inside a 5 minute window.
 
-**Tuning guidance:**
-- Increase threshold to 20 for noisy environments
-- Whitelist known vulnerability scanners
-- Add geo lookup to flag non-domestic source IPs
+**Tuning:**
+Raise to 20 in noisy environments.
+Whitelist known vulnerability scanners.
+Add a geo lookup to flag non domestic sources.
 
-**SOC Analyst Note:** Always check if failed attempts were followed
-by a successful login Event ID 4624 after 4625s = confirmed compromise.
+**Note:** The failures are not the finding. Check for a 4624 from the same source after the 4625s. Forty seven failures is an attack that failed. Forty seven failures and one success is an attacker with a shell.
+
+**Build quirk:** On my lab, linux_secure ingests fragmented. The sourcetype is pinned and every linux_secure search needs a rex extraction on top. That is environment specific, not a query flaw.
 
 ---
 
-### Query 2: Password Spray Detection (T1110.003)
+### Query 2, Password Spray. T1110.003.
+
+**Validated** against the 4625 cross account correlation from my Windows spray lab.
 
 ```spl
 index=auth sourcetype=WinEventLog:Security EventCode=4625
@@ -56,20 +61,21 @@ index=auth sourcetype=WinEventLog:Security EventCode=4625
 | table _time, src_ip, unique_users, attempts, attack_type, risk
 ```
 
-**What it detects:** One source IP attempting multiple different
-usernames characteristic of password spray vs brute force.
+Detects one source touching many usernames.
 
-**Key difference from brute force:**
-- Brute force: many attempts, one username
-- Password spray: fewer attempts, many usernames
+**The distinction:**
+Brute force is many attempts against one account. Count within.
+Spray is few attempts against many accounts. Count across.
 
-**SOC Analyst Note:** Password spray is designed to avoid lockout
-policies. Low attempt count per user makes it harder to detect
-without the unique_users correlation.
+Same event ID. Opposite correlation. `dc(user)` is the entire rule — a per account threshold cannot see this, which is exactly why attackers use it.
+
+**Note:** Spray stays under lockout on purpose. The low attempt count per user is the design, not an accident, and it is why the unique_users correlation is the only thing that catches it.
 
 ---
 
-### Query 3: Impossible Travel Detection (T1078)
+### Query 3, Impossible Travel. T1078.
+
+**Not validated.**
 
 ```spl
 index=auth sourcetype=WinEventLog:Security EventCode=4624
@@ -82,40 +88,43 @@ index=auth sourcetype=WinEventLog:Security EventCode=4624
 | table user, countries, times, ips, risk
 ```
 
-**What it detects:** The same user account logging in from
-multiple countries indicates credential compromise or VPN use.
+Detects one account authenticating from multiple countries.
 
-**SOC Analyst Note:** Always contact the user to verify before
-blocking. VPN usage can cause false positives. Check time
-between logins -- logins 5,000 miles apart in 30 minutes = confirmed impossible.
+**Note:** This is the noisiest rule in most SIEMs. VPN, mobile CGNAT, cloud sync clients, and badly geolocated IP blocks all fire it on innocent users. The query is easy. The exclusion list is the work.
+
+Contact the user out of band before containment — if the account is compromised, the attacker reads the email. And check the interval: 5,000 miles in 30 minutes is physics. 5,000 miles in 14 hours is a flight.
 
 ---
 
-## Category 2 — Execution Detection
+## Execution
 
-### Query 4: PowerShell Encoded Command Detection (T1059.001)
+### Query 4, PowerShell Encoded Command. T1059.001.
+
+**Validated** against Sysmon EID 1 and 4104 from my Windows endpoint forensics lab, including base64 deobfuscation.
 
 ```spl
 index=windows sourcetype=WinEventLog:Security EventCode=4688
 (CommandLine="*-EncodedCommand*" OR CommandLine="*-enc *"
 OR CommandLine="*-e *" OR CommandLine="*-ec *")
 | rex field=CommandLine "(?i)-(?:EncodedCommand|enc|e|ec)\s+(?P<encoded_cmd>\S+)"
-| eval decoded = urldecode(encoded_cmd)
 | table _time, ComputerName, user, ParentProcessName,
   CommandLine, encoded_cmd
 | sort - _time
 ```
 
-**What it detects:** PowerShell executed with base64 encoded commands
-— a classic technique to hide malicious activity from simple log inspection.
+Detects PowerShell run with a base64 payload.
 
-**SOC Analyst Note:** Legitimate PowerShell encoded commands are rare.
-Any encoded command from a non-IT user should be investigated immediately.
-Decode the base64 command in CyberChef to see what it actually does.
+**Note:** `-EncodedCommand` takes base64, not URL encoding, so Splunk cannot decode it natively without an app. The query extracts the string. Decode it in CyberChef, or pull the decoded version from Event 4104 script block logging, which logs it in the clear.
+
+**Read ParentProcessName first.** `-EncodedCommand` alone is not conclusive — plenty of legitimate tooling uses it. WINWORD.EXE or EXCEL.EXE as the parent is what makes it malicious before anything is decoded.
+
+The `-e` pattern will match broadly. Expect false positives and tune it.
 
 ---
 
-### Query 5: LOLBAS Execution Detection (T1218)
+### Query 5, LOLBAS Execution. T1218.
+
+**Not validated.** No lab in my portfolio has generated certutil or mshta abuse.
 
 ```spl
 index=windows sourcetype=WinEventLog:Security EventCode=4688
@@ -129,66 +138,48 @@ OR NewProcessName="*msiexec.exe*")
 | sort - _time
 ```
 
-**What it detects:** Living off the Land Binaries (LOLBAS) legitimate
-Windows tools used maliciously to download or execute payloads.
+Detects signed Windows binaries used to download or execute payloads.
 
-**SOC Analyst Note:** certutil.exe downloading files and
-regsvr32.exe executing remote scripts are confirmed red flags.
-Check the command line arguments for URLs or unusual file paths.
+**Note:** These are Microsoft signed tools doing what they were built to do, which is why AV does not flag them and why the binary name is not the signal. The command line is. certutil with `-urlcache` is downloading. regsvr32 with a URL is executing remote script.
 
----
-
-## Category 3 — Persistence Detection
-
-### Query 6: Registry Run Key Persistence (T1547.001)
-
-```spl
-index=windows sourcetype=WinEventLog:System EventCode=4657
-(ObjectName="*\\CurrentVersion\\Run*"
-OR ObjectName="*\\CurrentVersion\\RunOnce*")
-| table _time, ComputerName, user, ObjectName,
-  NewValue, OldValue, ProcessName
-| sort - _time
-```
-
-**What it detects:** Changes to registry run keys the most common
-persistence mechanism used by malware.
-
-**SOC Analyst Note:** Any new entry pointing to temp directories,
-AppData, or encoded commands is malicious. Cross-reference
-NewValue file path with Prefetch and AV logs.
+rundll32 and msiexec are noisy in any real environment. This query as written needs a baseline before deployment.
 
 ---
 
-### Query 7: Scheduled Task Creation (T1053.005)
+## Persistence
+
+### Query 6, Scheduled Task Creation. T1053.005.
+
+**Not validated.**
 
 ```spl
 index=windows sourcetype=WinEventLog:Security EventCode=4698
 | rex field=_raw "Task Name:\s+(?P<task_name>[^\n]+)"
 | rex field=_raw "Task Content:\s+(?P<task_content>[^\n]+)"
-| where NOT (user="SYSTEM" AND task_name="*Microsoft*")
+| where NOT (user="SYSTEM" AND like(task_name, "%Microsoft%"))
 | table _time, ComputerName, user, task_name, task_content
 | sort - _time
 ```
 
-**What it detects:** New scheduled tasks created outside of
-Microsoft system processes attackers use scheduled tasks
-for persistence and lateral movement.
+Detects tasks created outside system processes.
 
-**SOC Analyst Note:** Tasks created by non-system users at
-unusual hours are high-fidelity indicators. Check the task
-action PowerShell or cmd.exe in task actions = suspicious.
+**Note:** Scheduled tasks are legitimate constantly, so the exclusion is the rule. PowerShell or cmd.exe in the task action is what raises it. Task names impersonating Microsoft paths are evasion aimed at a human scanning a list, not at a rule.
+
+The original used a wildcard inside `NOT (...)` which does not glob. Uses `like()` now.
 
 ---
 
-## Category 4 — Lateral Movement Detection
+## Lateral Movement
 
-### Query 8: Pass-the-Hash Detection (T1550.002)
+### Query 7, Pass the Hash. T1550.002.
+
+**Not validated.**
 
 ```spl
 index=windows sourcetype=WinEventLog:Security
 EventCode=4624 Logon_Type=3 Authentication_Package=NTLM
 | where user != "ANONYMOUS LOGON"
+| bucket _time span=10m
 | stats count by _time, src_ip, dest, user, Logon_Type
 | where count > 3
 | eval risk = "HIGH - Possible Pass-the-Hash"
@@ -196,41 +187,45 @@ EventCode=4624 Logon_Type=3 Authentication_Package=NTLM
 | sort - count
 ```
 
-**What it detects:** Multiple NTLM network logons from the same
-source in a short time characteristic of pass-the-hash attacks
-where stolen password hashes are used without knowing the plaintext.
+Detects bursts of NTLM network logons from one source.
 
-**SOC Analyst Note:** Legitimate NTLM network logons happen but
-rarely burst. Multiple rapid NTLM logons to different destinations
-from one source = lateral movement in progress.
+**Note:** NTLM is legitimate. Bursts of it are not, especially where Kerberos would be expected. This rule needs to know what normal NTLM looks like in the environment, which is a baseline I do not have. Deploying it without one produces noise.
+
+Added a bucket — the original grouped by exact `_time`, so `count > 3` could never fire.
 
 ---
 
-### Query 9: SMB Lateral Movement (T1021.002)
+### Query 8, SMB Admin Share Access. T1021.002.
+
+**Not validated.**
 
 ```spl
 index=windows sourcetype=WinEventLog:Security EventCode=5140
-ShareName="\\\\*\\ADMIN$" OR ShareName="\\\\*\\C$"
-OR ShareName="\\\\*\\IPC$"
+(ShareName="*ADMIN$*" OR ShareName="*C$*" OR ShareName="*IPC$*")
+| bucket _time span=10m
 | stats count by _time, src_ip, dest, user, ShareName
 | where count > 2
 | eval risk = case(
-    ShareName="\\\\*\\ADMIN$", "CRITICAL - Admin Share Access",
-    ShareName="\\\\*\\C$", "HIGH - C Drive Share Access",
+    like(ShareName, "%ADMIN$%"), "CRITICAL - Admin Share Access",
+    like(ShareName, "%C$%"), "HIGH - C Drive Share Access",
     true(), "MEDIUM"
   )
 | table _time, src_ip, dest, user, ShareName, count, risk
 ```
 
-**What it detects:** Access to administrative shares (ADMIN$, C$)
-which attackers use to copy tools and execute commands remotely
-during lateral movement.
+Detects access to administrative shares used for remote tool staging and execution.
+
+**Note:** The original case statement used wildcards, which `case()` does not glob — everything fell through to MEDIUM. Uses `like()` now.
+
+Workstation to server SMB outside a mapped drive is the shape worth alerting on.
 
 ---
 
-## Category 5 — Exfiltration Detection
+## Exfiltration
 
-### Query 10: Large Outbound Data Transfer (T1041)
+### Query 9, Large Outbound Transfer. T1041.
+
+**Validated** against the exfiltration pattern in my AI era detection lab.
 
 ```spl
 index=network sourcetype=firewall OR sourcetype=proxy
@@ -242,29 +237,30 @@ dest_ip!=172.16.0.0/12
 | eval risk = case(
     total_mb > 500, "CRITICAL",
     total_mb > 100, "HIGH",
-    total_mb > 50, "MEDIUM"
+    true(), "MEDIUM"
   )
 | sort - total_bytes
 | table src_ip, dest_ip, dest_port, total_mb, risk
 ```
 
-**What it detects:** Outbound data transfers exceeding 50MB to
-external IPs a strong indicator of data exfiltration.
+Detects outbound transfers over 50MB to external destinations.
 
-**SOC Analyst Note:** Always check the destination IP on VirusTotal
-and AbuseIPDB. Legitimate large transfers (cloud backups) should
-be whitelisted. Encrypted traffic to unknown IPs = highest priority.
+**Note:** Enrich the destination on VirusTotal and AbuseIPDB before acting. Whitelist cloud backup.
+
+The structural weakness of any volume rule: it fires after the data has left. It is coverage at the end of the kill chain, which means the alert arrives when the loss is complete. Detection earlier in the chain is cheaper by orders of magnitude.
 
 ---
 
-## Category 6 — Threat Hunting Queries
+## Hunting Queries
 
-### Query 11: Process Injection Hunt (T1055)
+### Query 10, Process Injection. T1055.
+
+**Not validated.**
 
 ```spl
 index=windows sourcetype=sysmon EventCode=10
-TargetImage="*lsass.exe*" OR TargetImage="*svchost.exe*"
-OR TargetImage="*explorer.exe*"
+(TargetImage="*lsass.exe*" OR TargetImage="*svchost.exe*"
+OR TargetImage="*explorer.exe*")
 | where NOT (SourceImage="*MsMpEng.exe*"
   OR SourceImage="*csrss.exe*"
   OR SourceImage="*services.exe*")
@@ -273,13 +269,17 @@ OR TargetImage="*explorer.exe*"
 | sort - _time
 ```
 
-**What it detects:** Processes attempting to access the memory
-of sensitive system processes a technique used for credential
-dumping and code injection.
+Detects processes reading the memory of sensitive system processes.
+
+**Note:** lsass.exe as the target is the one that matters. Nothing legitimate reads LSASS. GrantedAccess masks of 0x1010 and 0x1410 are the credential dumping access patterns.
+
+svchost and explorer generate volume. Start with lsass only.
 
 ---
 
-### Query 12: C2 Beacon Detection (T1071)
+### Query 11, C2 Beacon via Regularity. T1071.
+
+**Not validated.**
 
 ```spl
 index=network sourcetype=proxy OR sourcetype=firewall
@@ -297,11 +297,30 @@ index=network sourcetype=proxy OR sourcetype=firewall
   unique_ports, beacon_score, risk
 ```
 
-**What it detects:** Regular, repeated connections to the same
-external IP on the same port the characteristic heartbeat
-pattern of C2 malware beaconing home for instructions.
+Detects repeated connections to one destination on few ports.
 
-**SOC Analyst Note:** Real C2 beacons are designed to look like
-normal traffic. Low unique_ports + high connection count =
-automated behaviour, not human browsing.
+**Note:** Behavioural, not signature based, which makes it resistant to the evasion that defeats IOC matching. Humans do not generate traffic at fixed intervals. A clean rhythm means a scheduler, and a scheduler talking outbound is a beacon until proven otherwise.
+
+Real C2 jitters the interval to defeat exactly this. A sophisticated beacon will not have a clean regularity score.
+
+---
+
+### Query 12, Shadow Copy Deletion. T1490.
+
+**Not validated.**
+
+```spl
+index=windows sourcetype=WinEventLog:Security EventCode=4688
+(CommandLine="*vssadmin*delete*shadows*" OR
+CommandLine="*wmic*shadowcopy*delete*" OR
+CommandLine="*bcdedit*recoveryenabled*no*")
+| table _time, ComputerName, user, CommandLine
+| eval risk = "CRITICAL - Ransomware Pre-Encryption"
+| sort - _time
 ```
+
+Detects deletion of volume shadow copies.
+
+**Note:** This is not an indicator, it is a countdown. Nothing legitimate deletes shadow copies. Ransomware does it immediately before encryption, to remove the recovery path first.
+
+Any hit is a containment action, not a triage queue item.
